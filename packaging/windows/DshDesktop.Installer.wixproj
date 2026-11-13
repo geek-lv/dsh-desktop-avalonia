@@ -1,0 +1,14 @@
+<Project Sdk="WixToolset.Sdk/6.0.2">
+  <!-- Pinned to WiX 6: WiX 7 requires accepting the OSMF EULA on every build machine. -->
+  <PropertyGroup>
+    <OutputName>DshDesktop</OutputName>
+    <OutputType>Package</OutputType>
+    <Platform>x64</Platform>
+    <InstallerPlatform>x64</InstallerPlatform>
+    <Version Condition="'$(Version)' == ''">0.0.0</Version>
+    <PublishDir Condition="'$(PublishDir)' == ''">$(MSBuildThisFileDirectory)..\..\dist\win-x64\app</PublishDir>
+    <DefineConstants>Version=$(Version);PublishDir=$(PublishDir);AssetsDir=$(MSBuildThisFileDirectory)..\..\Assets</DefineConstants>
+    <!-- Per-user files under %LOCALAPPDATA% have file key paths; that is fine for this layout. -->
+    <SuppressIces>ICE38;ICE64;ICE91</SuppressIces>
+  </PropertyGroup>
+</Project>

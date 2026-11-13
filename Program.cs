@@ -17,7 +17,7 @@ internal static class Program
         if (Instance is null) return 0; // the running instance was asked to show itself
 
         StartHidden = args.Any(a => a.Equals("--tray", StringComparison.OrdinalIgnoreCase));
-        Log.Write($"start: {Environment.OSVersion} tray={StartHidden}");
+        Log.Write($"start: {Environment.OSVersion} tray={StartHidden} lang={(L10n.IsChinese ? "zh" : "en")}");
 
         try
         {

@@ -1,0 +1,66 @@
+<!--
+  Per-user MSI: double-click installs to %LOCALAPPDATA%\Programs\DeepSeek Harness Desktop without
+  elevation, adds Start menu and desktop shortcuts, and upgrades in place on newer versions.
+  Built by make-msi.ps1 (dotnet build of DshDesktop.Installer.wixproj).
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="DeepSeek Harness Desktop"
+           Manufacturer="geek-lv"
+           Version="$(var.Version)"
+           UpgradeCode="10aa3f99-59c5-4d4f-ad3c-6b02c749941e"
+           Scope="perUser"
+           Compressed="yes"
+           InstallerVersion="500">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of DeepSeek Harness Desktop is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="AppIcon" SourceFile="$(var.AssetsDir)\app.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/geek-lv/dsh-desktop-avalonia" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <Property Id="ARPNOREPAIR" Value="1" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsDir" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="DeepSeek Harness Desktop" />
+      </Directory>
+    </StandardDirectory>
+
+    <!-- Everything dotnet publish produced (Native AOT exe + Skia / HarfBuzz / ANGLE). -->
+    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(var.PublishDir)\**" />
+    </ComponentGroup>
+
+    <!-- Per-user components must use an HKCU key path (ICE38) and remove the folders they own (ICE64). -->
+    <ComponentGroup Id="Shortcuts">
+      <Component Id="StartMenuShortcut" Directory="ProgramMenuFolder">
+        <Shortcut Id="StartMenuShortcut" Name="DeepSeek Harness Desktop"
+                  Description="Desktop shell for the DeepSeek Harness web UI"
+                  Target="[INSTALLFOLDER]DshDesktop.exe" WorkingDirectory="INSTALLFOLDER" Icon="AppIcon" />
+        <RemoveFolder Id="RemoveProgramsDir" Directory="ProgramsDir" On="uninstall" />
+        <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\geek-lv\DeepSeek Harness Desktop" Name="StartMenuShortcut"
+                       Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+      <Component Id="DesktopShortcut" Directory="DesktopFolder">
+        <Shortcut Id="DesktopShortcut" Name="DeepSeek Harness Desktop"
+                  Description="Desktop shell for the DeepSeek Harness web UI"
+                  Target="[INSTALLFOLDER]DshDesktop.exe" WorkingDirectory="INSTALLFOLDER" Icon="AppIcon" />
+        <RegistryValue Root="HKCU" Key="Software\geek-lv\DeepSeek Harness Desktop" Name="DesktopShortcut"
+                       Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+      <!-- Start-at-login is written by the app itself; drop it on uninstall so no dead entry is left. -->
+      <Component Id="CleanupAutostart" Directory="INSTALLFOLDER">
+        <RegistryValue Root="HKCU" Key="Software\geek-lv\DeepSeek Harness Desktop" Name="InstallDir"
+                       Type="string" Value="[INSTALLFOLDER]" KeyPath="yes" />
+        <RemoveRegistryValue Root="HKCU" Key="Software\Microsoft\Windows\CurrentVersion\Run" Name="DSHDesktop" />
+      </Component>
+    </ComponentGroup>
+
+    <Feature Id="Main" Title="DeepSeek Harness Desktop" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentGroupRef Id="Shortcuts" />
+    </Feature>
+  </Package>
+</Wix>

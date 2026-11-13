@@ -21,7 +21,13 @@ public sealed class App : Application
     private DispatcherTimer? _refresh;
     private bool _busy;
 
-    public override void Initialize() => AvaloniaXamlLoader.Load(this);
+    public override void Initialize()
+    {
+        AvaloniaXamlLoader.Load(this);
+        // Must exist before Avalonia.Native creates the app-menu exporter: it reads the menu once, so a
+        // menu set in OnFrameworkInitializationCompleted is ignored and "About Avalonia" stays.
+        if (OperatingSystem.IsMacOS()) BuildMacAppMenu();
+    }
 
     public override void OnFrameworkInitializationCompleted()
     {
@@ -31,7 +37,6 @@ public sealed class App : Application
 
             _window = new MainWindow();
             BuildTray();
-            if (OperatingSystem.IsMacOS()) BuildMacAppMenu();
 
             Program.Instance?.Listen(() => Dispatcher.UIThread.Post(ShowWindow));
             // macOS: a Dock-icon click / Finder double-click on the already running app arrives as a

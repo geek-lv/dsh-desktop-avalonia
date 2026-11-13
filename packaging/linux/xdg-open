@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Hand links and folders to the host's xdg-open with the host's environment, not the AppImage's
+# bundled GTK / GIO / GStreamer settings (those would be loaded into the user's browser or file manager).
+
+for v in ${DSH_APPIMAGE_VARS:-}; do
+  host="DSH_APPIMAGE_HOST_$v"
+  if [ -n "${!host+x}" ]; then export "$v=${!host}"; else unset "$v"; fi
+  unset "$host"
+done
+unset DSH_APPIMAGE_VARS
+
+self="$(readlink -f "${BASH_SOURCE[0]}")"
+IFS=: read -r -a dirs <<< "${PATH:-/usr/local/bin:/usr/bin:/bin}"
+for d in "${dirs[@]}"; do
+  c="$d/xdg-open"
+  if [ -x "$c" ] && [ "$(readlink -f "$c")" != "$self" ]; then exec "$c" "$@"; fi
+done
+echo "xdg-open: not found on this system" >&2
+exit 127

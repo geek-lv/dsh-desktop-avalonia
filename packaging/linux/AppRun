@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# AppImage entry point: set up the bundled GTK / WebKitGTK environment and start DshDesktop.
+
+HERE="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
+export APPDIR="${APPDIR:-$HERE}"
+
+# Variables the hooks below change. Their host values are kept so that programs we hand off to
+# (xdg-open -> the user's browser / file manager) get the host's environment back, see usr/bin/xdg-open.
+DSH_APPIMAGE_VARS="PATH XDG_DATA_DIRS GTK_DATA_PREFIX GTK_THEME GDK_BACKEND GSETTINGS_SCHEMA_DIR GI_TYPELIB_PATH \
+GTK_EXE_PREFIX GTK_PATH GTK_IM_MODULE_FILE GDK_PIXBUF_MODULE_FILE GIO_MODULE_DIR \
+GST_PLUGIN_SYSTEM_PATH_1_0 GST_PLUGIN_PATH_1_0 GST_PLUGIN_SCANNER_1_0 GST_REGISTRY_FORK"
+export DSH_APPIMAGE_VARS
+for v in $DSH_APPIMAGE_VARS; do
+  if [ -n "${!v+x}" ]; then export "DSH_APPIMAGE_HOST_$v=${!v}"; else unset "DSH_APPIMAGE_HOST_$v"; fi
+done
+
+for hook in "$APPDIR"/apprun-hooks/*.sh; do
+  [ -f "$hook" ] && . "$hook"
+done
+export PATH="$APPDIR/usr/bin:$PATH"
+
+# libwebkit2gtk inside this AppImage looks for WebKitNetworkProcess / WebKitWebProcess at the relative
+# path ././/lib/<triplet>/webkit2gtk-4.1, i.e. relative to $APPDIR/usr.
+cd "$APPDIR/usr" || exit 1
+exec "$APPDIR/usr/bin/DshDesktop" "$@"

@@ -1,0 +1,143 @@
+name: build
+
+# Native AOT builds for all three desktop platforms, packaged as one file each:
+#   Windows  .msi       per-user install, Start menu + desktop shortcuts
+#   macOS    .dmg       DeepSeek Harness Desktop.app (universal arm64 + x86_64, ad-hoc signed)
+#   Linux    .AppImage  carries WebKitGTK and every other dependency
+# Native AOT cannot cross-compile between operating systems, so each package builds on its own OS.
+#
+# Versions come from git tags only (.github/scripts/version.sh); DshDesktop.csproj is never edited:
+#   push / PR                             -> <last tag>.<run number>, packages kept as workflow artifacts
+#   Run workflow with bump=patch|minor|major -> next version after the last v* tag, tagged + GitHub release
+#   push a vX.Y.Z tag                     -> that version, GitHub release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Release: bump the last v* tag (none = test build only)'
+        type: choice
+        options: [none, patch, minor, major]
+        default: none
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  # superseded branch / PR builds are cancelled; releases never are
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')) }}
+
+env:
+  DOTNET_NOLOGO: '1'
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      release: ${{ steps.v.outputs.release }}
+      tag: ${{ steps.v.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # every tag, to find the last release
+      - id: v
+        env:
+          BUMP: ${{ github.event.inputs.bump || 'none' }}
+        run: bash .github/scripts/version.sh
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build MSI (Native AOT)
+        shell: pwsh
+        run: ./packaging/windows/make-msi.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: dist/*.msi
+          if-no-files-found: error
+
+  macos:
+    needs: version
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build .app + DMG (Native AOT, universal arm64 + x86_64)
+        run: RID=osx-universal packaging/macos/make-dmg.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-universal
+          path: dist/*.dmg
+          if-no-files-found: error
+
+  linux:
+    needs: version
+    # Oldest supported Ubuntu runner: the AppImage links against this glibc and runs on anything newer.
+    runs-on: ubuntu-22.04
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build dependencies
+        run: |
+          sudo apt-get update
+          # clang + zlib1g-dev: Native AOT link. The libraries are what the AppImage bundles; the rest is
+          # tooling for linuxdeploy-plugin-gtk and appimagetool (see packaging/linux/make-appimage.sh).
+          sudo apt-get install -y --no-install-recommends \
+            clang zlib1g-dev \
+            libwebkit2gtk-4.1-0 libgtk-3-0 libgtk-3-bin librsvg2-common libice6 libsm6 glib-networking \
+            gsettings-desktop-schemas libglib2.0-bin gir1.2-glib-2.0 shared-mime-info \
+            pkg-config dpkg-dev file desktop-file-utils curl ca-certificates
+      - name: Build AppImage (Native AOT)
+        run: packaging/linux/make-appimage.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64
+          path: dist/*.AppImage
+          if-no-files-found: error
+
+  release:
+    if: needs.version.outputs.release == 'true'
+    needs: [version, windows, macos, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages
+          merge-multiple: true
+      - name: Checksums
+        run: cd packages && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      # Creates the tag on the built commit when it does not exist yet (Run workflow + bump).
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: DeepSeek Harness Desktop ${{ needs.version.outputs.version }}
+          files: packages/*
+          generate_release_notes: true
+          make_latest: true

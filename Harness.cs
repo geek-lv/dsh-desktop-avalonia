@@ -87,7 +87,7 @@ internal static partial class Harness
         }
         catch { }
 
-        var found = unix.FirstOrDefault(File.Exists) ?? FromLoginShell();
+        var found = unix.Where(IsNativePath).FirstOrDefault(File.Exists) ?? FromLoginShell();
         return found is null ? null : (found, Array.Empty<string>());
     }
 
@@ -106,16 +106,26 @@ internal static partial class Harness
                 CreateNoWindow = true,
             };
             psi.ArgumentList.Add("-lc");
-            psi.ArgumentList.Add("command -v dsh");
+            // Every match, not just the first: under WSL the Windows PATH is appended and its npm shim
+            // (/mnt/c/.../npm/dsh) must be skipped in favour of a Linux install.
+            psi.ArgumentList.Add("type -ap dsh 2>/dev/null || command -v dsh");
             using var p = Process.Start(psi);
             if (p is null) return null;
             var read = p.StandardOutput.ReadToEndAsync();
             if (!p.WaitForExit(5000)) { try { p.Kill(); } catch { } return null; }
-            var path = read.Result.Split('\n', StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.Trim();
-            return path is not null && path.StartsWith('/') && File.Exists(path) ? path : null;
+            return read.Result.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                .Select(l => l.Trim())
+                .FirstOrDefault(l => l.StartsWith('/') && IsNativePath(l) && File.Exists(l));
         }
         catch { return null; }
     }
+
+    private static readonly bool IsWsl = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WSL_DISTRO_NAME"))
+        || (OperatingSystem.IsLinux() && File.Exists("/proc/sys/fs/binfmt_misc/WSLInterop"));
+
+    /// <summary>False for Windows binaries seen through WSL's drive mounts (/mnt/c/...): that is the
+    /// Windows host's DSH, not one this Linux app can run.</summary>
+    private static bool IsNativePath(string path) => !(IsWsl && path.StartsWith("/mnt/", StringComparison.Ordinal));
 
     /// <summary>Whether a `dsh` launcher exists on this machine (it does not have to be running).</summary>
     public static bool IsInstalled() => ResolveDsh() is not null;

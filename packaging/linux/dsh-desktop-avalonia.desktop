@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=DeepSeek Harness Desktop
+Comment=Native desktop shell for the local DeepSeek Harness web UI
+Exec=DshDesktop
+Icon=dsh-desktop-avalonia
+Terminal=false
+Categories=Development;
+StartupWMClass=DshDesktop
