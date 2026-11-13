@@ -181,7 +181,11 @@ public sealed partial class MainWindow : Window
         _onSplash = true;
         try
         {
-            _web.NavigateToString(SplashHtml.Value, null!);
+            // WKWebView treats a load issued while the splash is showing as initiated by the splash
+            // document (default base http://localhost:12345/), i.e. cross-site to 127.0.0.1:3080, so the
+            // SameSite=Strict auth cookie set by ?token= is withheld on the 303 to "/" (page says
+            // "authentication required"). Giving the splash the harness origin keeps the hop same-site.
+            _web.NavigateToString(SplashHtml.Value, OperatingSystem.IsMacOS() ? new Uri(Harness.PlainUrl) : null!);
             _pendingSplash = false;
         }
         catch (Exception ex)

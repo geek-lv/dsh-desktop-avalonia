@@ -32,6 +32,13 @@ public sealed class App : Application
             BuildTray();
 
             Program.Instance?.Listen(() => Dispatcher.UIThread.Post(ShowWindow));
+            // macOS: a Dock-icon click / Finder double-click on the already running app arrives as a
+            // "reopen" Apple Event via LaunchServices, not as a second process, so the pipe never sees it.
+            if (TryGetFeature(typeof(IActivatableLifetime)) is IActivatableLifetime activatable)
+                activatable.Activated += (_, e) =>
+                {
+                    if (e.Kind == ActivationKind.Reopen) ShowWindow();
+                };
 
             if (!Program.StartHidden) _window.Show();
             // Start the service even when booting hidden, so the page is ready the first time it opens.
@@ -89,13 +96,17 @@ public sealed class App : Application
         menu.Items.Add(exit);
         menu.Opening += (_, _) => RefreshStatus();
 
+        // The whale glyph is black on transparent. macOS gets it as a template image (tinted by the
+        // system to match a light / dark menu bar); elsewhere the .ico is used as is.
+        var iconUri = OperatingSystem.IsMacOS() ? "avares://DshDesktop/Assets/tray-template.png" : "avares://DshDesktop/Assets/app.ico";
         _tray = new TrayIcon
         {
-            Icon = new WindowIcon(AssetLoader.Open(new Uri("avares://DshDesktop/Assets/app.ico"))),
+            Icon = new WindowIcon(AssetLoader.Open(new Uri(iconUri))),
             ToolTipText = AppPaths.AppTitle,
             Menu = menu,
             IsVisible = true,
         };
+        if (OperatingSystem.IsMacOS()) MacOSProperties.SetIsTemplateIcon(_tray, true);
         // Left click (Windows / most Linux trays) brings the window back; macOS always opens the menu.
         _tray.Clicked += (_, _) => ShowWindow();
         TrayIcon.SetIcons(this, new TrayIcons { _tray });

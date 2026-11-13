@@ -16,7 +16,11 @@ internal sealed class SingleInstance : IDisposable
     /// <summary>Null when another instance already owns the lock (it has been asked to show itself).</summary>
     public static SingleInstance? TryAcquire()
     {
-        var mutex = new Mutex(true, @"Local\" + PipeName, out var isFirst);
+        // On Unix .NET scopes Local\ mutexes to the POSIX session id, and every app launchd starts
+        // (Finder/open, login items) gets its own session, so Local\ never sees the other instance.
+        // Global\ lives under the per-user $TMPDIR on macOS and the name carries the user name anyway.
+        var scope = OperatingSystem.IsWindows() ? @"Local\" : @"Global\";
+        var mutex = new Mutex(true, scope + PipeName, out var isFirst);
         if (isFirst) return new SingleInstance(mutex);
 
         mutex.Dispose();

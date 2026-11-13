@@ -18,7 +18,10 @@ It does not reimplement any UI: the window shows the official `dsh web` page, so
 - An installed DeepSeek Harness CLI (`npm i -g` the official package) so `dsh` is available. Set `DSH_BIN` to point at it explicitly if it is not found.
 - .NET 10 runtime (or publish self-contained)
 - Windows: Microsoft Edge WebView2 Runtime (preinstalled on Windows 11)
-- Linux: `libwebkit2gtk-4.1` and a tray that supports StatusNotifierItem (GNOME needs the AppIndicator extension)
+- Linux: `libwebkit2gtk-4.1-0` (WebKitGTK; 4.0 also works), plus `libicu`, `libice6`, `libsm6` (present on normal desktops, missing on minimal installs / WSL). The tray needs a StatusNotifierItem host (GNOME needs the AppIndicator extension; WSLg has none)
+  ```sh
+  sudo apt install libwebkit2gtk-4.1-0 libice6 libsm6 libicu-dev
+  ```
 
 ## Build
 
@@ -27,6 +30,15 @@ dotnet build -c Release
 dotnet publish -c Release -r win-x64      # or osx-arm64, osx-x64, linux-x64, linux-arm64
 dotnet publish -c Release -r linux-x64 -p:SelfContained=true   # no .NET runtime needed on the target
 ```
+
+macOS `.app` bundle (self-contained, app icon, ad-hoc signed; run on a Mac):
+
+```sh
+packaging/macos/make-app.sh                 # Apple Silicon -> dist/osx-arm64/DeepSeek Harness Desktop.app
+RID=osx-x64 packaging/macos/make-app.sh     # Intel
+```
+
+Run it from the bundle: a bare binary launched outside a `.app` gets no Dock icon, and macOS hides its menu-bar item.
 
 ## Where things live
 
@@ -38,8 +50,11 @@ dotnet publish -c Release -r linux-x64 -p:SelfContained=true   # no .NET runtime
 
 ## Status
 
-Verified on Windows 11 (WebView2 157): service start and token sign-in, tray, single instance, hide-to-tray, window state.
-macOS and Linux builds compile but have not been run yet; a macOS `.app` bundle is not produced yet.
+| | Engine | Verified |
+|---|---|---|
+| Windows 11 | WebView2 157 | service start + token sign-in, tray, single instance, hide-to-tray, window state |
+| macOS 26.6 (Apple Silicon) | WKWebView | same, plus Dock reopen; `.app` bundle with Dock icon and template menu-bar icon |
+| Ubuntu 26.04 on WSL2 / WSLg | WebKitGTK 2.52 | service start + token sign-in, single instance, hide-to-tray, `linux-x64` publish (no tray host under WSLg) |
 
 ## License
 

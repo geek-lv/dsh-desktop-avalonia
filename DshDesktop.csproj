@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <AvaloniaResource Include="Assets/app.ico" />
+    <AvaloniaResource Include="Assets/tray-template.png" />
     <EmbeddedResource Include="Assets/splash.html" LogicalName="splash.html" />
     <EmbeddedResource Include="Assets/splash-whale-idle.webp" LogicalName="splash-whale-idle.webp" />
     <EmbeddedResource Include="Assets/splash-whale-sorry.webp" LogicalName="splash-whale-sorry.webp" />

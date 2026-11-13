@@ -220,6 +220,16 @@ internal static class Harness
             foreach (var a in dsh.Value.Prefix) psi.ArgumentList.Add(a);
             psi.ArgumentList.Add("web");
             psi.ArgumentList.Add("--no-open");
+            if (!OperatingSystem.IsWindows())
+            {
+                // GUI apps on macOS start with PATH=/usr/bin:/bin:/usr/sbin:/sbin, so the npm shim's
+                // `#!/usr/bin/env node` fails. Node normally sits next to the dsh shim (Homebrew, nvm).
+                var extra = new[] { Path.GetDirectoryName(dsh.Value.File), "/opt/homebrew/bin", "/usr/local/bin" };
+                var current = psi.Environment.TryGetValue("PATH", out var pv) ? pv ?? "" : "";
+                psi.Environment["PATH"] = string.Join(Path.PathSeparator, extra
+                    .Concat(current.Split(Path.PathSeparator))
+                    .Where(d => !string.IsNullOrEmpty(d)).Distinct());
+            }
 
             var p = new Process { StartInfo = psi };
             p.OutputDataReceived += (_, e) => Pump(e.Data);
