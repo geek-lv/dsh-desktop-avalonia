@@ -38,5 +38,7 @@ internal static class Program
     public static AppBuilder BuildAvaloniaApp() =>
         AppBuilder.Configure<App>()
             .UsePlatformDetect()
+            // macOS: drop Avalonia's default application-menu items ("About Avalonia" …); App builds its own.
+            .With(new MacOSPlatformOptions { DisableDefaultApplicationMenuItems = true })
             .LogToTrace();
 }

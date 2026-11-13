@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="{{LANG}}">
 <head>
 <meta charset="utf-8">
 <title>DeepSeek Harness Desktop</title>
@@ -58,8 +58,8 @@
     <div class="halo"><img id="hero" src="splash-whale-idle.webp" alt=""></div>
     <div class="title">DeepSeek Harness Desktop</div>
     <div class="bar" id="bar"></div>
-    <div class="status" id="status">正在启动 DSH 服务…</div>
-    <div class="err" id="err"><button id="retry">重试</button></div>
+    <div class="status" id="status">{{STARTING}}</div>
+    <div class="err" id="err"><button id="retry">{{RETRY}}</button></div>
   </div>
 <script>
   var IDLE = 'splash-whale-idle.webp';
@@ -83,7 +83,7 @@
   };
 
   document.getElementById('retry').addEventListener('click', function () {
-    window.__dshSplash('正在重新启动 DSH 服务…', false);
+    window.__dshSplash('{{RESTARTING}}', false);
     try { if (window.invokeCSharpAction) { window.invokeCSharpAction('retry'); return; } } catch (e) {}
     try { window.chrome.webview.postMessage('retry'); } catch (e) {}
   });

@@ -21,7 +21,7 @@ public sealed partial class MainWindow : Window
     private bool _loadStarted;
     private bool _onSplash;
     private bool _pendingSplash;
-    private string _splashText = "正在启动 DSH 服务…";
+    private string _splashText = L10n.Starting;
     private bool _splashFailed;
 
     public MainWindow()
@@ -139,7 +139,16 @@ public sealed partial class MainWindow : Window
     private async Task LoadHarnessAsync(bool fromRetry = false)
     {
         if (fromRetry) ShowSplash();
-        SplashStatus(fromRetry ? "正在重新启动 DSH 服务…" : "正在启动 DSH 服务…");
+        SplashStatus(fromRetry ? L10n.Restarting2 : L10n.Starting);
+
+        // Nothing listening and no `dsh` on this machine: explain how to install it instead of failing.
+        if (!await Task.Run(() => Harness.PortOpen() || Harness.IsInstalled()))
+        {
+            Log.Write("harness: dsh is not installed");
+            SplashStatus(L10n.NotInstalledSplash, failed: true);
+            await ShowInstallDialogAsync();
+            return;
+        }
 
         var sw = Stopwatch.StartNew();
         var ready = await Task.Run(() => Harness.PortOpen() || Harness.Start());
@@ -147,13 +156,32 @@ public sealed partial class MainWindow : Window
 
         if (ready)
         {
-            SplashStatus("正在连接…");
+            SplashStatus(L10n.Connecting);
             // Only a child WE spawned needs waiting for: it prints its tokenised URL a moment after it
             // starts listening. An adopted instance already logged its token.
             Reload(waitForTokenMs: Harness.StartedByUs ? 20000 : 0);
             return;
         }
-        SplashStatus("DSH 服务启动失败，点「重试」再试一次（详情见托盘 › 打开日志目录）", failed: true);
+        SplashStatus(L10n.StartFailed, failed: true);
+    }
+
+    private bool _installDialogOpen;
+
+    /// <summary>Modal "DSH is not installed" dialog with a copyable npm command; "重试" re-runs the start.</summary>
+    private async Task ShowInstallDialogAsync()
+    {
+        if (_installDialogOpen) return;
+        _installDialogOpen = true;
+        try
+        {
+            if (!IsVisible) ShowFromTray(); // booted to the tray (autostart): the user still has to see this
+            var retry = await new InstallDshDialog().ShowDialog<bool>(this);
+            if (retry) _ = LoadHarnessAsync(fromRetry: true);
+        }
+        finally
+        {
+            _installDialogOpen = false;
+        }
     }
 
     /// <summary>Re-resolve the tokenised URL and navigate.</summary>
@@ -207,13 +235,17 @@ public sealed partial class MainWindow : Window
 
     private void ApplySplashStatus()
     {
-        var js = $"window.__dshSplash && window.__dshSplash({JsonSerializer.Serialize(_splashText)}, {(_splashFailed ? "true" : "false")});";
+        var js = $"window.__dshSplash && window.__dshSplash({JsonSerializer.Serialize(_splashText, AppJson.Default.String)}, {(_splashFailed ? "true" : "false")});";
         try { _ = _web.InvokeScript(js); } catch { }
     }
 
     private static readonly Lazy<string> SplashHtml = new(() =>
     {
-        var html = ReadResource("splash.html");
+        var html = ReadResource("splash.html")
+            .Replace("{{LANG}}", L10n.IsChinese ? "zh-CN" : "en")
+            .Replace("{{STARTING}}", L10n.Starting)
+            .Replace("{{RESTARTING}}", L10n.Restarting2)
+            .Replace("{{RETRY}}", L10n.Retry);
         return html
             .Replace("'splash-whale-idle.webp'", $"'{DataUri("splash-whale-idle.webp")}'")
             .Replace("'splash-whale-sorry.webp'", $"'{DataUri("splash-whale-sorry.webp")}'")
@@ -265,7 +297,7 @@ public sealed partial class MainWindow : Window
 
     public void OpenFolder(string path) => OpenExternal(path);
 
-    private static void OpenExternal(string target)
+    internal static void OpenExternal(string target)
     {
         try
         {
@@ -279,8 +311,6 @@ public sealed partial class MainWindow : Window
 
     // ------------------------------------------------------------------ bounds
 
-    private sealed record SavedBounds(int X, int Y, double Width, double Height, bool Maximized);
-
     public void SaveBounds()
     {
         try
@@ -291,7 +321,7 @@ public sealed partial class MainWindow : Window
             var b = maximized && _lastNormal is not null
                 ? _lastNormal with { Maximized = true }
                 : new SavedBounds(Position.X, Position.Y, Width, Height, maximized);
-            File.WriteAllText(AppPaths.WindowStateFile, JsonSerializer.Serialize(b));
+            File.WriteAllText(AppPaths.WindowStateFile, JsonSerializer.Serialize(b, AppJson.Default.SavedBounds));
         }
         catch { }
     }
@@ -311,7 +341,7 @@ public sealed partial class MainWindow : Window
         try
         {
             if (!File.Exists(AppPaths.WindowStateFile)) return;
-            var b = JsonSerializer.Deserialize<SavedBounds>(File.ReadAllText(AppPaths.WindowStateFile));
+            var b = JsonSerializer.Deserialize(File.ReadAllText(AppPaths.WindowStateFile), AppJson.Default.SavedBounds);
             if (b is null || b.Width < MinWidth || b.Height < MinHeight) return;
 
             Width = b.Width;

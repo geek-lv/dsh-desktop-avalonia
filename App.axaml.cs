@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Avalonia.Threading;
@@ -8,7 +9,7 @@ using Avalonia.Threading;
 namespace DshDesktop;
 
 /// <summary>Owns the tray icon, its menu, the window lifetime and the DSH service actions.
-/// The app lives in the tray: closing the window only hides it; "退出" is the only real exit.</summary>
+/// The app lives in the tray: closing the window only hides it; Quit is the only real exit.</summary>
 public sealed class App : Application
 {
     private MainWindow? _window;
@@ -30,6 +31,7 @@ public sealed class App : Application
 
             _window = new MainWindow();
             BuildTray();
+            if (OperatingSystem.IsMacOS()) BuildMacAppMenu();
 
             Program.Instance?.Listen(() => Dispatcher.UIThread.Post(ShowWindow));
             // macOS: a Dock-icon click / Finder double-click on the already running app arrives as a
@@ -51,18 +53,18 @@ public sealed class App : Application
 
     private void BuildTray()
     {
-        var open = new NativeMenuItem("打开窗口");
+        var open = new NativeMenuItem(L10n.TrayOpen);
         open.Click += (_, _) => ShowWindow();
 
-        _status = new NativeMenuItem("DSH 服务：…") { IsEnabled = false };
+        _status = new NativeMenuItem(L10n.Status(L10n.StatusUnknown)) { IsEnabled = false };
 
-        _restart = new NativeMenuItem("重启 DSH 服务");
+        _restart = new NativeMenuItem(L10n.TrayRestart);
         _restart.Click += (_, _) => Service(restart: true);
 
-        _stop = new NativeMenuItem("停止 DSH 服务");
+        _stop = new NativeMenuItem(L10n.TrayStop);
         _stop.Click += (_, _) => Service(restart: false);
 
-        _autostart = new NativeMenuItem("开机自启")
+        _autostart = new NativeMenuItem(L10n.TrayAutostart)
         {
             ToggleType = MenuItemToggleType.CheckBox,
             IsChecked = Autostart.IsEnabled(),
@@ -73,13 +75,13 @@ public sealed class App : Application
             RefreshStatus();
         };
 
-        var devtools = new NativeMenuItem("重新加载页面");
+        var devtools = new NativeMenuItem(L10n.TrayReload);
         devtools.Click += (_, _) => _window?.Reload();
 
-        var openLog = new NativeMenuItem("打开日志目录");
+        var openLog = new NativeMenuItem(L10n.TrayOpenLogs);
         openLog.Click += (_, _) => _window?.OpenFolder(AppPaths.DataDir);
 
-        var exit = new NativeMenuItem("退出（保留 DSH 服务）");
+        var exit = new NativeMenuItem(L10n.TrayQuit);
         exit.Click += (_, _) => Exit();
 
         var menu = new NativeMenu();
@@ -96,9 +98,11 @@ public sealed class App : Application
         menu.Items.Add(exit);
         menu.Opening += (_, _) => RefreshStatus();
 
-        // The whale glyph is black on transparent. macOS gets it as a template image (tinted by the
-        // system to match a light / dark menu bar); elsewhere the .ico is used as is.
-        var iconUri = OperatingSystem.IsMacOS() ? "avares://DshDesktop/Assets/tray-template.png" : "avares://DshDesktop/Assets/app.ico";
+        // Windows / Linux: the blue whale (reads on light and dark trays). macOS: a template image the
+        // system tints to match the menu bar, like every other menu-bar extra.
+        var iconUri = OperatingSystem.IsWindows() ? "avares://DshDesktop/Assets/app.ico"
+            : OperatingSystem.IsMacOS() ? "avares://DshDesktop/Assets/tray-template.png"
+            : "avares://DshDesktop/Assets/tray.png";
         _tray = new TrayIcon
         {
             Icon = new WindowIcon(AssetLoader.Open(new Uri(iconUri))),
@@ -118,12 +122,32 @@ public sealed class App : Application
         RefreshStatus();
     }
 
+    /// <summary>The app-name menu in the macOS menu bar (Avalonia's defaults are disabled in Program).</summary>
+    private void BuildMacAppMenu()
+    {
+        var open = new NativeMenuItem(L10n.TrayOpen) { Gesture = KeyGesture.Parse("Cmd+N") };
+        open.Click += (_, _) => ShowWindow();
+
+        var reload = new NativeMenuItem(L10n.TrayReload) { Gesture = KeyGesture.Parse("Cmd+R") };
+        reload.Click += (_, _) => _window?.Reload();
+
+        var quit = new NativeMenuItem(L10n.AppMenuQuit) { Gesture = KeyGesture.Parse("Cmd+Q") };
+        quit.Click += (_, _) => Exit();
+
+        var menu = new NativeMenu();
+        menu.Items.Add(open);
+        menu.Items.Add(reload);
+        menu.Items.Add(new NativeMenuItemSeparator());
+        menu.Items.Add(quit);
+        NativeMenu.SetMenu(this, menu);
+    }
+
     private async void RefreshStatus()
     {
         if (_status is null || _autostart is null) return;
         if (_busy) return;
         var state = await Task.Run(Harness.DescribeState);
-        _status.Header = "DSH 服务：" + state;
+        _status.Header = L10n.Status(state);
         _autostart.IsChecked = Autostart.IsEnabled();
     }
 
@@ -134,9 +158,9 @@ public sealed class App : Application
         if (_busy || _window is null || _tray is null) return;
         _busy = true;
         _restart!.IsEnabled = _stop!.IsEnabled = false;
-        var verb = restart ? "正在重启 DSH 服务…" : "正在停止 DSH 服务…";
+        var verb = restart ? L10n.Restarting : L10n.Stopping;
         _tray.ToolTipText = verb;
-        _status!.Header = "DSH 服务：" + verb.TrimEnd('…');
+        _status!.Header = L10n.Status(restart ? L10n.StateRestarting : L10n.StateStopping);
 
         if (restart)
         {
@@ -156,21 +180,21 @@ public sealed class App : Application
             Log.Write($"service: {(restart ? "restart" : "stop")} failed");
             _window.ShowSplash();
             _window.SplashStatus(restart
-                ? "重启失败：无法结束或启动 DSH 进程。若它由管理员 / root 终端启动，请在那个终端里结束它后点「重试」"
-                : "停止失败：当前 DSH 进程可能由管理员 / root 启动，普通权限无法结束它", failed: true);
+                ? L10n.RestartFailed
+                : L10n.StopFailed, failed: true);
             ShowWindow();
             return;
         }
 
         if (restart)
         {
-            _window.SplashStatus("正在连接…");
+            _window.SplashStatus(L10n.Connecting);
             _window.Reload(waitForTokenMs: 20000);
         }
         else
         {
             _window.ShowSplash();
-            _window.SplashStatus("DSH 服务已停止。点「重试」或托盘里的「重启 DSH 服务」再次启动", failed: true);
+            _window.SplashStatus(L10n.StoppedHint, failed: true);
         }
     }
 

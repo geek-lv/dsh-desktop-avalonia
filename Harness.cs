@@ -9,14 +9,13 @@ namespace DshDesktop;
 /// The host is spawned as our child with stdout captured, so the per-start access token is read
 /// straight from its own output, and stopping it never leaves an orphan behind.
 /// An already-running host (started by a terminal, a service, another app) is adopted, not replaced.</summary>
-internal static class Harness
+internal static partial class Harness
 {
     public const int Port = 3080;
     public const string PlainUrl = "http://127.0.0.1:3080/";
 
     private static readonly object Gate = new();
     private static readonly StringBuilder Captured = new();
-    private static readonly Regex TokenPattern = new(@"http://127\.0\.0\.1:3080/\?token=[A-Za-z0-9_\-]+");
     private static Process? _host;
 
     /// <summary>Set when this app spawned the host itself.</summary>
@@ -38,16 +37,16 @@ internal static class Harness
 
     public static string DescribeState()
     {
-        if (!PortOpen()) return "已停止";
+        if (!PortOpen()) return L10n.StateStopped;
         var pid = OwnerPid();
-        return pid is null ? $"运行中 (:{Port})" : $"运行中 (:{Port}, pid {pid})";
+        return L10n.StateRunning(Port, pid);
     }
 
     // ---------------------------------------------------------------- locating `dsh`
 
-    /// <summary>How to launch `dsh`: an explicit file plus leading args, or null when nothing was found.
+    /// <summary>How to launch `dsh`: an explicit file plus leading args, or null when it is not installed.
     /// GUI apps on macOS / Linux do not inherit the login shell's PATH (nvm, volta, Homebrew...), so the
-    /// usual install locations are probed explicitly, with a login shell as the last resort.</summary>
+    /// usual install locations are probed explicitly, then the login shell is asked.</summary>
     private static (string File, string[] Prefix)? ResolveDsh()
     {
         var overridePath = Environment.GetEnvironmentVariable("DSH_BIN");
@@ -88,14 +87,38 @@ internal static class Harness
         }
         catch { }
 
-        var found = unix.FirstOrDefault(File.Exists);
-        if (found is not null) return (found, Array.Empty<string>());
-
-        // Last resort: let the user's login shell resolve it (picks up nvm/fnm/asdf init scripts).
-        var shell = Environment.GetEnvironmentVariable("SHELL");
-        if (string.IsNullOrEmpty(shell) || !File.Exists(shell)) shell = "/bin/sh";
-        return (shell, new[] { "-lc", "exec dsh \"$@\"", "dsh" });
+        var found = unix.FirstOrDefault(File.Exists) ?? FromLoginShell();
+        return found is null ? null : (found, Array.Empty<string>());
     }
+
+    /// <summary>Ask the user's login shell where `dsh` is (picks up nvm / fnm / asdf / volta init scripts).</summary>
+    private static string? FromLoginShell()
+    {
+        try
+        {
+            var shell = Environment.GetEnvironmentVariable("SHELL");
+            if (string.IsNullOrEmpty(shell) || !File.Exists(shell)) shell = "/bin/sh";
+            var psi = new ProcessStartInfo(shell)
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            psi.ArgumentList.Add("-lc");
+            psi.ArgumentList.Add("command -v dsh");
+            using var p = Process.Start(psi);
+            if (p is null) return null;
+            var read = p.StandardOutput.ReadToEndAsync();
+            if (!p.WaitForExit(5000)) { try { p.Kill(); } catch { } return null; }
+            var path = read.Result.Split('\n', StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.Trim();
+            return path is not null && path.StartsWith('/') && File.Exists(path) ? path : null;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Whether a `dsh` launcher exists on this machine (it does not have to be running).</summary>
+    public static bool IsInstalled() => ResolveDsh() is not null;
 
     /// <summary>.cmd shims need cmd.exe; real executables run directly.</summary>
     private static (string, string[]) Wrap(string path) =>
@@ -304,6 +327,14 @@ internal static class Harness
         return Start(waitSeconds);
     }
 
+    [GeneratedRegex(@"http://127\.0\.0\.1:3080/\?token=[A-Za-z0-9_\-]+")]
+    private static partial Regex TokenRegex();
+
+    private static Regex TokenPattern => TokenRegex();
+
+    [GeneratedRegex(@"pid=(\d+)")]
+    private static partial Regex SsPidRegex();
+
     // ---------------------------------------------------------------- port owner
 
     /// <summary>PID listening on the harness port (null when nothing listens or it cannot be told).</summary>
@@ -335,7 +366,7 @@ internal static class Harness
             var ss = new[] { "/usr/bin/ss", "/usr/sbin/ss", "/bin/ss" }.FirstOrDefault(File.Exists);
             if (ss is not null)
             {
-                var m = Regex.Match(Run(ss, "-ltnpH", $"sport = :{Port}"), @"pid=(\d+)");
+                var m = SsPidRegex().Match(Run(ss, "-ltnpH", $"sport = :{Port}"));
                 if (m.Success) return int.Parse(m.Groups[1].Value);
             }
         }
