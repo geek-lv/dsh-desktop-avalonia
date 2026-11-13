@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>DshDesktop</AssemblyName>
+    <RootNamespace>DshDesktop</RootNamespace>
+    <Product>DSH Desktop</Product>
+    <Version>2.0.0</Version>
+    <ApplicationIcon>Assets/app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <DebugType>none</DebugType>
+    <!-- framework-dependent single file by default; pass -p:SelfContained=true for a standalone build -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>false</SelfContained>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets/app.ico" />
+    <EmbeddedResource Include="Assets/splash.html" LogicalName="splash.html" />
+    <EmbeddedResource Include="Assets/splash-whale-idle.webp" LogicalName="splash-whale-idle.webp" />
+    <EmbeddedResource Include="Assets/splash-whale-sorry.webp" LogicalName="splash-whale-sorry.webp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.6" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.6" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.6" />
+    <PackageReference Include="Avalonia.Controls.WebView" Version="12.1.2" />
+  </ItemGroup>
+
+</Project>

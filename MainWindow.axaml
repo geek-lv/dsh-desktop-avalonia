@@ -1,0 +1,12 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="DshDesktop.MainWindow"
+        Title="DeepSeek Harness Desktop"
+        Icon="avares://DshDesktop/Assets/app.ico"
+        Width="1440" Height="940" MinWidth="760" MinHeight="520"
+        WindowStartupLocation="CenterScreen"
+        Background="#151517">
+  <!-- Native title bar on every OS (Windows snap layouts, macOS traffic lights / full screen, the
+       Linux WM's own decorations). Its light / dark variant follows the DSH page's theme. -->
+  <NativeWebView x:Name="Web" />
+</Window>
